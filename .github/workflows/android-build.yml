@@ -23,60 +23,84 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Find Android project
+      - name: Locate Android project
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(find . -type f \( \
+          echo "=== Repository ==="
+          find . -maxdepth 4 -type f | sort | head -300
+
+          echo "=== Searching for Gradle project ==="
+
+          PROJECT_DIR=""
+
+          while IFS= read -r file; do
+            dir=$(dirname "$file")
+
+            if [ -d "$dir/app" ]; then
+              PROJECT_DIR="$dir"
+              break
+            fi
+          done < <(find . -type f \( \
             -name "settings.gradle" \
             -o -name "settings.gradle.kts" \
-          \) -print -quit)
+          \))
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "No Gradle project found."
+            echo "No Android Gradle project found."
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT_DIR")
+          PROJECT_DIR=$(realpath "$PROJECT_DIR")
 
-          echo "Gradle project: $PROJECT_DIR"
+          echo "Android project found:"
+          echo "$PROJECT_DIR"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Create Gradle Wrapper
+      - name: Prepare Gradle Wrapper
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
+          echo "=== Project contents ==="
+          ls -la
+
           if [ ! -f "gradlew" ]; then
-            echo "Gradle Wrapper not found."
-            echo "Creating Gradle Wrapper..."
+            echo "Gradle Wrapper missing."
+            echo "Generating Gradle Wrapper..."
 
             gradle wrapper --gradle-version 8.7
-
-            echo "Gradle Wrapper created."
           fi
 
           chmod +x gradlew
 
+          echo "=== Gradle version ==="
           ./gradlew --version
 
-      - name: Build APK
+      - name: Build Debug APK
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
+
+          echo "=== Building BoltFire ==="
 
           ./gradlew assembleDebug --stacktrace
 
       - name: Find APK
         shell: bash
         run: |
-          echo "Generated APK files:"
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          echo "=== Generated APK ==="
+
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
