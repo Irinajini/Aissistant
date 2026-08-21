@@ -1,4 +1,4 @@
-name: Build BoltFire Assistant
+name: Build BoltFire AI
 
 on:
   workflow_dispatch:
@@ -20,35 +20,56 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
+      - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Extract Android project
+        shell: bash
+        run: |
+          set -e
+
+          echo "=== Repository contents ==="
+          ls -la
+
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No ZIP file found."
+            exit 1
+          fi
+
+          echo "ZIP found: $ZIP_FILE"
+
+          mkdir -p extracted
+
+          unzip -q "$ZIP_FILE" -d extracted
+
+          echo "=== Extracted files ==="
+          find extracted -maxdepth 5 -type f | sort | head -300
 
       - name: Locate Android project
         shell: bash
         run: |
           set -e
 
-          echo "=== Repository ==="
-          find . -maxdepth 4 -type f | sort | head -300
+          echo "=== Searching for Android project ==="
 
-          echo "=== Searching for Gradle project ==="
-
-          PROJECT_DIR=""
-
-          while IFS= read -r file; do
-            dir=$(dirname "$file")
-
-            if [ -d "$dir/app" ]; then
-              PROJECT_DIR="$dir"
-              break
-            fi
-          done < <(find . -type f \( \
+          SETTINGS_FILE=$(find extracted -type f \( \
             -name "settings.gradle" \
             -o -name "settings.gradle.kts" \
-          \))
+          \) -print -quit)
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "No Android Gradle project found."
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "No settings.gradle found."
+            echo "The ZIP does not appear to contain a Gradle project."
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "Gradle project found, but app directory is missing."
+            echo "Project directory: $PROJECT_DIR"
             exit 1
           fi
 
@@ -70,7 +91,7 @@ jobs:
           ls -la
 
           if [ ! -f "gradlew" ]; then
-            echo "Gradle Wrapper missing."
+            echo "Gradle Wrapper not found."
             echo "Generating Gradle Wrapper..."
 
             gradle wrapper --gradle-version 8.7
@@ -81,21 +102,21 @@ jobs:
           echo "=== Gradle version ==="
           ./gradlew --version
 
-      - name: Build Debug APK
+      - name: Build APK
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "=== Building BoltFire ==="
+          echo "=== Building APK ==="
 
           ./gradlew assembleDebug --stacktrace
 
       - name: Find APK
         shell: bash
         run: |
-          echo "=== Generated APK ==="
+          echo "=== Generated APK files ==="
 
           find "$PROJECT_DIR" \
             -type f \
